@@ -54,10 +54,7 @@ class AverageViz(
         val canvasWidth: Double,
         val canvasHeight: Double,
         val series: MutableList<Serie> = mutableListOf(),
-        val thresholds: MutableList<Threshold> = mutableListOf(),
-        var fromDate: LocalDate? = null,
-        var toDate: LocalDate? = null
-) {
+        val thresholds: MutableList<Threshold> = mutableListOf()) {
 
     var margin: Margins = Margins(5.0, 5.0, 30.0, 30.0)
     var startAt = 0.0
@@ -72,7 +69,7 @@ class AverageViz(
         get() = series.flatMap(Serie::data)
                 .map(Pair<LocalDateTime, Double>::first)
                 .let {
-                    (fromDate?:it.min()!!.measureDate) to (toDate?:it.max()!!.measureDate)
+                    it.min()!!.measureDate to it.max()!!.measureDate
                 }
 
     private val valueRange: Pair<Double, Double>
