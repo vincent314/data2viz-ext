@@ -54,7 +54,10 @@ class AverageViz(
         val canvasWidth: Double,
         val canvasHeight: Double,
         val series: MutableList<Serie> = mutableListOf(),
-        val thresholds: MutableList<Threshold> = mutableListOf()) {
+        val thresholds: MutableList<Threshold> = mutableListOf(),
+        var fromDate: LocalDate? = null,
+        var toDate: LocalDate? = null
+) {
 
     var margin: Margins = Margins(5.0, 5.0, 30.0, 30.0)
     var startAt = 0.0
@@ -69,7 +72,7 @@ class AverageViz(
         get() = series.flatMap(Serie::data)
                 .map(Pair<LocalDateTime, Double>::first)
                 .let {
-                    it.min()!!.measureDate to it.max()!!.measureDate
+                    (fromDate?:it.min()!!.measureDate) to (toDate?:it.max()!!.measureDate)
                 }
 
     private val valueRange: Pair<Double, Double>
@@ -139,7 +142,7 @@ class AverageViz(
                         }
                     }
 
-                    if(serie.linearRegression) {
+                    if (serie.linearRegression) {
                         val regression = serie.linear
                         line {
                             stroke = serie.primaryColor
@@ -194,7 +197,7 @@ class Serie(
         var primaryColor: Color = Colors.Web.blueviolet,
         var secondaryColor: Color = Colors.Web.aliceblue,
         var data: List<Pair<LocalDateTime, Double>> = listOf(),
-        var linearRegression:Boolean = false
+        var linearRegression: Boolean = false
 ) {
     val average: Map<LocalDate, Double>
         get() {
