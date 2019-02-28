@@ -2,7 +2,8 @@ package org.vince.data2viz.ext
 
 import io.data2viz.viz.viz
 import org.junit.Test
-import kotlin.test.assertEquals
+import org.vince.data2viz.ext.average.averageViz
+import org.vince.data2viz.ext.average.serie
 
 class AverageVizTest {
 

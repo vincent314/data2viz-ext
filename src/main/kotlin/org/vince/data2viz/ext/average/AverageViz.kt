@@ -1,9 +1,7 @@
-package org.vince.data2viz.ext
+package org.vince.data2viz.ext.average
 
 import io.data2viz.axis.Orient
 import io.data2viz.axis.axis
-import io.data2viz.color.Color
-import io.data2viz.color.ColorOrGradient
 import io.data2viz.color.Colors
 import io.data2viz.scale.LinearScale
 import io.data2viz.scale.Scales
@@ -11,42 +9,11 @@ import io.data2viz.scale.TimeScale
 import io.data2viz.shape.areaBuilder
 import io.data2viz.shape.curves
 import io.data2viz.time.Date
-import io.data2viz.time.date
 import io.data2viz.viz.GroupNode
 import io.data2viz.viz.Margins
 import io.data2viz.viz.Viz
-import org.nield.kotlinstatistics.SimpleRegression
-import org.nield.kotlinstatistics.averageBy
-import org.nield.kotlinstatistics.simpleRegression
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
-import java.time.ZoneId
-import java.time.ZoneId.SHORT_IDS
-
-val LocalDate.vizDate: Date
-    get() = date(this.year, this.monthValue, this.dayOfMonth)
-
-val LocalDateTime.measureDate: LocalDate
-    get() {
-        val hourThreshold = 4
-        val localDate = toLocalDate()
-        return if (toLocalTime().hour > hourThreshold) {
-            localDate
-        } else {
-            localDate.minusDays(1)
-        }
-    }
-
-val LocalDateTime.millis: Long
-    get() {
-        val timeZone = ZoneId.of(SHORT_IDS["ECT"])
-        return this.atZone(timeZone).toInstant().toEpochMilli()
-    }
-
-val LocalDate.millis: Long
-    get() = LocalDateTime.of(this, LocalTime.of(0, 0)).millis
-
+import org.vince.data2viz.ext.ExtVizDsl
+import org.vince.data2viz.ext.measureDate
 
 @ExtVizDsl
 class AverageViz(
@@ -59,22 +26,22 @@ class AverageViz(
     var margin: Margins = Margins(5.0, 5.0, 30.0, 30.0)
     var startAt = 0.0
 
-    val width: Double
+    private val width: Double
         get() = canvasWidth - margin.hMargins
 
-    val height: Double
+    private val height: Double
         get() = canvasHeight - margin.vMargins
 
-    private val dateRange: Pair<LocalDate, LocalDate>
+    private val dateRange: Pair<Date, Date>
         get() = series.flatMap(Serie::data)
-                .map(Pair<LocalDateTime, Double>::first)
+                .map(Pair<Date, Double>::first)
                 .let {
-                    it.min()!!.measureDate to it.max()!!.measureDate
+                    it.minBy(Date::getTime)!!.measureDate to it.maxBy(Date::getTime)!!.measureDate
                 }
 
     private val valueRange: Pair<Double, Double>
         get() = series.flatMap(Serie::data)
-                .map(Pair<LocalDateTime, Double>::second)
+                .map(Pair<Date, Double>::second)
                 .let {
                     it.min()!! to it.max()!!
                 }
@@ -82,7 +49,6 @@ class AverageViz(
     val dateScale: TimeScale<Double>
         get() = Scales.Continuous.time {
             domain = dateRange.toList()
-                    .map(LocalDate::vizDate)
             range = listOf(0.0, width)
         }
 
@@ -98,30 +64,30 @@ class AverageViz(
 
                 group {
                     path {
-                        val area = areaBuilder<Pair<LocalDate, Double>> {
+                        val area = areaBuilder<Pair<Date, Double>> {
                             stroke = serie.primaryColor
                             fill = serie.secondaryColor
                             curve = curves.natural
-                            xBaseline = { dateScale(it.first.vizDate) }
-                            xTopline = { dateScale(it.first.vizDate) }
+                            xBaseline = { (date) -> dateScale(date) }
+                            xTopline = { (date) -> dateScale(date) }
                             yBaseline = { valueScale(50.0) }
-                            yTopline = { valueScale(it.second) }
+                            yTopline = { (_, value) -> valueScale(value) }
                         }
                         area.render(average.toList(), this)
                     }
 
-                    fun buildMinOrMax(localDate: LocalDate, value: Double) = line {
+                    fun buildMinOrMax(localDate: Date, value: Double) = line {
                         strokeWidth = 1.0
                         fill = Colors.Web.gray
-                        x1 = dateScale(localDate.vizDate) - 2.0
-                        x2 = dateScale(localDate.vizDate) + 2.0
+                        x1 = dateScale(localDate) - 2.0
+                        x2 = dateScale(localDate) + 2.0
                         y1 = valueScale(value)
                         y2 = valueScale(value)
                     }
 
                     average.forEach { (localDate, value) ->
                         circle {
-                            x = dateScale(localDate.vizDate)
+                            x = dateScale(localDate)
                             y = valueScale(value)
                             radius = 2.0
                             fill = serie.primaryColor
@@ -131,7 +97,7 @@ class AverageViz(
                         buildMinOrMax(localDate, min)
                         buildMinOrMax(localDate, max)
                         line {
-                            val x = dateScale(localDate.vizDate)
+                            val x = dateScale(localDate)
                             x1 = x
                             x2 = x
                             y1 = valueScale(min)
@@ -144,10 +110,10 @@ class AverageViz(
                         line {
                             stroke = serie.primaryColor
                             val (min, max) = dateRange
-                            x1 = dateScale(min.vizDate)
-                            x2 = dateScale(max.vizDate)
-                            y1 = valueScale(regression.predict(min.millis.toDouble()))
-                            y2 = valueScale(regression.predict(max.millis.toDouble()))
+                            x1 = dateScale(min)
+                            x2 = dateScale(max)
+                            y1 = valueScale(regression.predict(min.getTime()))
+                            y2 = valueScale(regression.predict(max.getTime()))
                         }
                     }
                 }
@@ -189,41 +155,6 @@ class AverageViz(
     }
 }
 
-@ExtVizDsl
-class Serie(
-        var primaryColor: Color = Colors.Web.blueviolet,
-        var secondaryColor: Color = Colors.Web.aliceblue,
-        var data: List<Pair<LocalDateTime, Double>> = listOf(),
-        var linearRegression: Boolean = false
-) {
-    val average: Map<LocalDate, Double>
-        get() {
-            return data.averageBy(
-                    keySelector = { it.first.toLocalDate() },
-                    doubleSelector = Pair<LocalDateTime, Double>::second
-            )
-        }
-
-    val linear: SimpleRegression
-        get() {
-            return data
-                    .map { (date, value) ->
-                        date.millis to value
-                    }
-                    .simpleRegression()
-        }
-
-    fun minMaxOf(localDate: LocalDate): Pair<Double, Double> {
-        return data.filter {
-            it.first.toLocalDate() == localDate
-        }
-                .map { it.second }
-                .let { it.min()!! to it.max()!! }
-    }
-}
-
-@ExtVizDsl
-data class Threshold(val value: Double, val color: ColorOrGradient = Colors.Web.red)
 
 fun Viz.averageViz(width: Double, height: Double, init: AverageViz.() -> Unit): AverageViz =
         AverageViz(this, width, height)
@@ -243,10 +174,4 @@ fun Viz.averageViz(width: Double, height: Double, init: AverageViz.() -> Unit): 
                     }
                 }
 
-fun AverageViz.serie(init: Serie.() -> Unit): Serie = Serie()
-        .apply(init)
-        .also { series += it }
 
-fun AverageViz.threshold(value: Double, color: ColorOrGradient = Colors.Web.red) {
-    thresholds += Threshold(value, color)
-}
